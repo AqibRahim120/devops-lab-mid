@@ -11,86 +11,86 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install requests pytest-json-report
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install requests pytest-json-report
 
-    - name: Run Pytest and Generate Report
-      id: run_tests
-      continue-on-error: true
-      run: |
-        pytest --json-report --json-report-file=report.json
+      - name: Run Pytest and Generate Report
+        id: run_tests
+        continue-on-error: true
+        run: |
+          pytest -v --json-report --json-report-file=report.json
 
-    - name: Parse Test Results and Forward to Localhost
-      env:
-        LOCAL_RECEIVER_URL: ${{ secrets.LOCAL_RECEIVER_URL }}
-      run: |
-        python -c '
-        import json, os, requests, datetime
+      - name: Parse Test Results and Forward to Localhost
+        env:
+          LOCAL_RECEIVER_URL: ${{ secrets.LOCAL_RECEIVER_URL }}
+        run: |
+          python -c '
+          import json, os, requests, datetime
 
-        # Read pytest JSON report
-        if os.path.exists("report.json"):
-            with open("report.json", "r") as f:
-                data = json.load(f)
-            
-            summary = data.get("summary", {})
-            tests_list = []
-            for t in data.get("tests", []):
-                tests_list.append({
-                    "name": t.get("nodeid"),
-                    "result": t.get("outcome"),
-                    "message": t.get("call", {}).get("longrepr", "")
-                })
-            
-            payload = {
-                "repository": os.getenv("GITHUB_REPOSITORY"),
-                "branch": os.getenv("GITHUB_REF_NAME"),
-                "commit_sha": os.getenv("GITHUB_SHA"),
-                "run_id": os.getenv("GITHUB_RUN_ID"),
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "summary": {
-                    "total": summary.get("total", 0),
-                    "passed": summary.get("passed", 0),
-                    "failed": summary.get("failed", 0),
-                    "overall_status": "PASSED" if summary.get("failed", 0) == 0 else "FAILED"
-                },
-                "tests": tests_list
-            }
-        else:
-            payload = {
-                "repository": os.getenv("GITHUB_REPOSITORY"),
-                "branch": os.getenv("GITHUB_REF_NAME"),
-                "commit_sha": os.getenv("GITHUB_SHA"),
-                "run_id": os.getenv("GITHUB_RUN_ID"),
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "summary": {"total": 0, "passed": 0, "failed": 1, "overall_status": "FAILED"},
-                "tests": []
-            }
+          # Read pytest JSON report
+          if os.path.exists("report.json"):
+              with open("report.json", "r") as f:
+                  data = json.load(f)
+              
+              summary = data.get("summary", {})
+              tests_list = []
+              for t in data.get("tests", []):
+                  tests_list.append({
+                      "name": t.get("nodeid"),
+                      "result": t.get("outcome"),
+                      "message": t.get("call", {}).get("longrepr", "")
+                  })
+              
+              payload = {
+                  "repository": os.getenv("GITHUB_REPOSITORY"),
+                  "branch": os.getenv("GITHUB_REF_NAME"),
+                  "commit_sha": os.getenv("GITHUB_SHA"),
+                  "run_id": os.getenv("GITHUB_RUN_ID"),
+                  "timestamp": datetime.datetime.utcnow().isoformat(),
+                  "summary": {
+                      "total": summary.get("total", 0),
+                      "passed": summary.get("passed", 0),
+                      "failed": summary.get("failed", 0),
+                      "overall_status": "PASSED" if summary.get("failed", 0) == 0 else "FAILED"
+                  },
+                  "tests": tests_list
+              }
+          else:
+              payload = {
+                  "repository": os.getenv("GITHUB_REPOSITORY"),
+                  "branch": os.getenv("GITHUB_REF_NAME"),
+                  "commit_sha": os.getenv("GITHUB_SHA"),
+                  "run_id": os.getenv("GITHUB_RUN_ID"),
+                  "timestamp": datetime.datetime.utcnow().isoformat(),
+                  "summary": {"total": 0, "passed": 0, "failed": 1, "overall_status": "FAILED"},
+                  "tests": []
+              }
 
-        receiver_url = os.getenv("LOCAL_RECEIVER_URL")
-        if receiver_url:
-            try:
-                res = requests.post(f"{receiver_url}/report", json=payload, timeout=10)
-                print("Receiver response:", res.status_code, res.text)
-            except Exception as e:
-                print("Failed to send report to local receiver:", e)
-        else:
-            print("LOCAL_RECEIVER_URL secret not set. Skipping forwarding.")
-        '
+          receiver_url = os.getenv("LOCAL_RECEIVER_URL")
+          if receiver_url:
+              try:
+                  res = requests.post(f"{receiver_url}/report", json=payload, timeout=10)
+                  print("Receiver response:", res.status_code, res.text)
+              except Exception as e:
+                  print("Failed to send report to local receiver:", e)
+          else:
+              print("LOCAL_RECEIVER_URL secret not set. Skipping forwarding.")
+          '
 
-    - name: Check Test Outcome
-      if: steps.run_tests.outcome == 'failure'
-      run: exit 1
+      - name: Check Test Outcome
+        if: steps.run_tests.outcome == 'failure'
+        run: exit 1
 
   # --- BONUS 1: Conditional GitHub Pages Deployment ---
   deploy-pages:
